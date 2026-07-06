@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>质检爬坡准确率 · 人员趋势看板</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    :root {
+      --chart-h: 150px;
+      --bg: #F7F8FA;
+      --card: #FFFFFF;
+      --border: #E5E6EB;
+      --primary-text: #1D2129;
+      --secondary-text: #86909C;
+      --risk: #F54A45;
+      --risk-bg: #FFECE8;
+      --safe: #34B352;
+      --safe-bg: #E8FFF3;
+      --shadow: 0 2px 8px rgba(29, 33, 41, 0.06);
+      --shadow-hover: 0 6px 20px rgba(29, 33, 41, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--primary-text);
+      -webkit-font-smoothing: antialiased;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 16px 24px 24px; }
+
+    /* Top section wrapper with soft gradient */
+    .top-section {
+      background: linear-gradient(135deg, #B8D9A8 0%, #FFFFFF 100%);
+      border: 1px solid #E5E6EB;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+    .top-section .header-card {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 4px 12px 8px;
+      margin-bottom: 8px;
+    }
+    .top-section .metric-row {
+      margin-bottom: 0;
+    }
+    .top-section .metric-card {
+      background: rgba(255, 255, 255, 0.78);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border-color: rgba(229, 230, 235, 0.9);
+    }
+
+    /* Header */
+    .header-card {
+      background: linear-gradient(135deg, #F0FBF3 0%, #FFFFFF 60%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .header-card h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-text);
+    }
+    .header-meta {
+      color: var(--secondary-text);
+      font-size: 13px;
+    }
+    .header-meta strong { color: var(--primary-text); font-weight: 600; }
+    .header-meta .risk-tag { color: var(--risk); font-weight: 600; }
+    .header-meta a { color: #2A6AF0; text-decoration: none; font-weight: 600; }
+    .header-meta a:hover { text-decoration: underline; }
+
+    /* Metric cards */
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .metric-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 16px;
+      box-shadow: var(--shadow);
+    }
+    .metric-card .label {
+      color: var(--secondary-text);
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+    .metric-card .value {
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--primary-text);
+    }
+    .metric-card.risk .value { color: var(--risk); }
+
+    /* Toolbar */
+    .toolbar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+    .toolbar .field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .toolbar label { color: var(--secondary-text); }
+    .toolbar input, .toolbar select {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: var(--primary-text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .toolbar input:focus, .toolbar select:focus { border-color: var(--safe); }
+    .toolbar input[type="search"] { width: 240px; }
+    .toolbar .view-switch {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .toolbar .view-switch button {
+      background: transparent;
+      border: none;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--primary-text);
+      transition: all 0.2s;
+    }
+    .toolbar .view-switch button.active {
+      background: var(--safe);
+      color: #fff;
+      font-weight: 600;
+    }
+    .toolbar .view-switch button.risk-mode.active {
+      background: var(--risk);
+    }
+    .toolbar .spacer { flex: 1; }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 2px 20px 10px;
+      color: var(--secondary-text);
+      font-size: 13px;
+    }
+    .pagination button {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 6px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--primary-text);
+      transition: all 0.15s;
+    }
+    .pagination button:hover:not(:disabled) { border-color: var(--safe); color: var(--safe); }
+    .pagination button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Card grid */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1200px) { .card-grid { grid-template-columns: repeat(3, 1fr); } .metric-row { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 900px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px) { .card-grid { grid-template-columns: 1fr; } .metric-row { grid-template-columns: 1fr; } }
+
+    .person-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 14px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.2s, transform 0.2s;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .person-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+    .person-card.risk {
+      border: 1.5px solid var(--risk);
+    }
+
+    .person-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .person-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary-text);
+      word-break: break-all;
+    }
+    .risk-badge {
+      background: var(--risk);
+      color: #fff;
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .person-meta {
+      color: var(--secondary-text);
+      font-size: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: center;
+    }
+    .person-meta .tag {
+      background: #F2F3F5;
+      color: #4E5969;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .person-meta .tag.independent-yes { background: #E8FFF3; color: #34B352; }
+    .person-meta .tag.independent-no { background: #FFECE8; color: #F54A45; }
+
+    .chart-box { height: var(--chart-h, 150px); margin: 4px 0 0; transition: height 0.15s; }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      padding-top: 6px;
+      border-top: 1px dashed var(--border);
+    }
+    .stat-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .stat-cell .k {
+      color: var(--secondary-text);
+      font-size: 11px;
+    }
+    .stat-cell .v {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--primary-text);
+    }
+    .stat-cell .v.risk { color: var(--risk); }
+
+    .warn-line {
+      background: var(--risk-bg);
+      color: var(--risk);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .empty {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 60px 20px;
+      text-align: center;
+      color: var(--secondary-text);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-section">
+    <div class="header-card">
+      <h1>质检爬坡准确率 · 人员趋势看板</h1>
+      <div class="header-meta">
+        数据范围：<strong id="date-range"></strong>（<strong id="date-count"></strong> 天） · 总人数 <strong id="total-people"></strong> · 风险阈值：<span class="risk-tag">均值 &lt; 90%</span> · 生成时间 <strong id="gen-time"></strong> · 数据源：<a href="https://bytedance.larkoffice.com/wiki/Gx6DwNchOi3kIMkH9yGcB9ZFnTb?sheet=Gn4y0M" target="_blank" rel="noopener">飞书 Wiki · 质检（爬坡）准确率子表</a>
+      </div>
+    </div>
+
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="label">日期天数</div>
+        <div class="value"><span id="m-date-count"></span> 天</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">总人数</div>
+        <div class="value" id="m-total"></div>
+      </div>
+      <div class="metric-card">
+        <div class="label">整体平均准确率</div>
+        <div class="value" id="m-mean"></div>
+      </div>
+      <div class="metric-card risk">
+        <div class="label">风险人数（均值 &lt; 90%）</div>
+        <div class="value" id="m-risk"></div>
+      </div>
+    </div>
+    </div><!-- /top-section -->
+
+    <div class="toolbar">
+      <div class="field">
+        <label>搜索</label>
+        <input id="search" type="search" placeholder="按姓名过滤，如 吴佳锡" />
+      </div>
+      <div class="field">
+        <label>队列</label>
+        <select id="queue-filter"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label>方向</label>
+        <select id="direction-filter"><option value="">全部</option></select>
+      </div>
+      <div class="field">
+        <label>排序</label>
+        <select id="sort-select">
+          <option value="risk-asc">风险优先 · 均值升序</option>
+          <option value="mean-asc">均值升序</option>
+          <option value="mean-desc">均值降序</option>
+          <option value="name">按姓名</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>视图</label>
+        <div class="view-switch" id="view-switch">
+          <button data-view="all" class="active">全部人员</button>
+          <button data-view="risk" class="risk-mode">仅看风险</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>时间范围</label>
+        <select id="range-select">
+          <option value="7" selected>最近 7 天</option>
+          <option value="14">最近 14 天</option>
+          <option value="30">最近 30 天</option>
+          <option value="all">全部</option>
+        </select>
+      </div>
+      <div class="spacer"></div>
+      <div class="field">
+        <label>每页</label>
+        <select id="page-size">
+          <option value="24" selected>24</option>
+          <option value="12">12</option>
+          <option value="48">48</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="pagination" id="pagination-top">
+      <button id="prev-btn">‹ 上一页</button>
+      <span id="page-info">1 / 1</span>
+      <button id="next-btn">下一页 ›</button>
+    </div>
+
+    <div id="grid" class="card-grid"></div>
+    <div id="empty" class="empty" style="display:none;">没有匹配的人员</div>
+
+    <div class="pagination" id="pagination-bottom" style="justify-content:center; padding-top:16px;">
+      <button id="prev-btn2">‹ 上一页</button>
+      <span id="page-info2">1 / 1</span>
+      <button id="next-btn2">下一页 ›</button>
+    </div>
+  </div>
+
+  <script>
+    const DATA = {"shortDates": ["05-20", "05-21", "05-22", "05-23", "05-25", "05-26", "05-27", "05-28", "05-29", "05-30", "06-01", "06-02", "06-03", "06-04", "06-05", "06-06", "06-08", "06-09", "06-10", "06-11", "06-12", "06-14", "06-15", "06-16", "06-17", "06-18", "06-21", "06-22", "06-23", "06-24", "06-25", "06-26", "06-27", "06-28", "06-29", "06-30", "07-01"], "dateHeaders": ["2026/05/20", "2026/5/21", "2026/5/22", "2026/5/23", "2026/5/25", "2026/5/26", "2026/5/27", "2026/5/28", "2026/5/29", "2026/5/30", "2026/6/1", "2026/6/2", "2026/6/3", "2026/6/4", "2026/6/5", "2026/6/6", "2026/6/8", "2026/6/9", "2026/6/10", "2026/6/11", "2026/6/12", "2026/6/14", "2026/6/15", "2026/6/16", "2026/6/17", "2026/6/18", "2026/6/21", "2026/6/22", "2026/6/23", "2026/6/24", "2026/6/25", "2026/6/26", "2026/6/27", "2026/6/28", "2026/6/29", "2026/6/30", "2026/7/1"], "people": [{"name": "吴佳锡", "queue": "美感GSB", "direction": "T2I", "independent": "是", "scores": [0.87, 0.926470588235294, 0.9025974025974026, 0.8041, 0.9320388349514563, 0.9411764705882353, 0.9545, null, 0.9333333333333333, 0.875, 0.96875, 0.9206, 0.7, 0.94, 0.9, 0.84, 0.86, 0.94, 0.9, 0.912, 0.85, null, 0.887, 0.8875, 0.972, 0.819, 0.957, 0.914, null, 0.8866, 0.8778, 0.85, null, 0.924, 0.9467, 0.8947, null], "valid_count": 32, "mean": 0.9, "latest": 0.8947, "lowest": 0.7, "highest": 0.972}, {"name": "谢桦莹", "queue": "指令遵循GSB", "direction": "T2I", "independent": "需要观察", "scores": [0.95, 0.9655, 0.9833, null, 0.9315, 0.9713, 0.979, 0.98, 0.9713, 0.98, 0.97, 0.966, null, 0.974, 0.946, 0.94, 0.9535, 0.97, 0.96, 0.9595, 0.97, null, 0.94, 0.9535, 0.945, 0.96, 0.93, 0.94, null, null, null, null, null, null, null, null, null], "valid_count": 25, "mean": 0.96, "latest": 0.94, "lowest": 0.93, "highest": 0.9833}, {"name": "张雅雯", "queue": "结构GSB", "direction": "T2I", "independent": "是", "scores": [1.0, 0.97, 0.97, 0.96, 0.96, 0.96, 0.95, 0.95, null, 0.977, 0.97, 0.96, 0.95, 0.96, 0.97, null, 0.97, 0.96, 0.95, 0.95, null, null, 0.96, 0.97, 0.95, 0.96, 0.97, 0.92, 0.94, 0.94, 0.96, 0.94, null, null, 0.96, null, null], "valid_count": 29, "mean": 0.96, "latest": 0.96, "lowest": 0.92, "highest": 1.0}, {"name": "李璐宁", "queue": "整体GSB", "direction": "T2I", "independent": "需要观察", "scores": [0.924, 0.97, 1.0, null, 0.95, 0.95, 0.96, 0.925, null, null, 0.958, 0.947, 0.972, 0.94, 0.944, null, 0.94, 0.94, 0.95, 0.95, 0.92, null, 0.935, 0.94, 0.93, 0.92, 0.92, 0.93, 0.93, null, null, null, null, null, null, null, null], "valid_count": 24, "mean": 0.94, "latest": 0.93, "lowest": 0.92, "highest": 1.0}, {"name": "韩玉姣", "queue": "整体", "direction": "T2I", "independent": "否", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 0, "mean": null, "latest": null, "lowest": null, "highest": null}, {"name": "胡素勤", "queue": "指令遵循", "direction": "T2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.83, 0.89, 0.9, 0.92, null, null, null, null, null, 0.94, null, null, null, null, null, null, null, null, null], "valid_count": 5, "mean": 0.9, "latest": 0.94, "lowest": 0.83, "highest": 0.94}, {"name": "吴浩铭", "queue": "指令遵循", "direction": "T2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.83, 0.85, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 2, "mean": 0.84, "latest": 0.85, "lowest": 0.83, "highest": 0.85}, {"name": "孟楠", "queue": "结构", "direction": "T2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 0, "mean": null, "latest": null, "lowest": null, "highest": null}, {"name": "范文漪", "queue": "美感GSB", "direction": "T2I", "independent": "是", "scores": [null, null, null, null, null, null, null, 0.8083, null, null, 0.875, 0.86, 0.87, 0.87, 0.94, null, 0.9125, 0.92, 0.94, 0.949, 0.866, 0.89, 0.922, 0.826, 0.905, 0.863, 0.985, 0.924, null, 0.918, null, 0.8, null, 0.938, 0.9231, null, null], "valid_count": 22, "mean": 0.9, "latest": 0.9231, "lowest": 0.8, "highest": 0.985}, {"name": "陈昕怡", "queue": "美感", "direction": "T2I", "independent": "是", "scores": [null, null, null, null, null, null, null, null, null, 0.7, 0.9714285714285714, 0.82, 0.96, null, 0.93, 0.82, 0.85, 0.99, null, 1.0, 0.85, null, null, null, null, 0.94, null, null, 0.9787, 0.9648, 0.8947, 0.87, null, 0.9047, 0.9231, 1.0, null], "valid_count": 18, "mean": 0.91, "latest": 1.0, "lowest": 0.7, "highest": 1.0}, {"name": "于淼", "queue": "考点", "direction": "T2I", "independent": "是", "scores": [null, null, null, null, null, null, 0.97, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 1, "mean": 0.97, "latest": 0.97, "lowest": 0.97, "highest": 0.97}, {"name": "温子超", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [0.96, 1.0, null, null, null, 96.96, null, null, null, null, null, null, null, 0.94, null, null, null, null, null, null, null, 0.9767, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 5, "mean": 20.17, "latest": 0.9767, "lowest": 0.94, "highest": 96.96}, {"name": "李明磊", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [0.97, 1.0, 0.9506, null, 0.9375, null, 0.9347, 0.971, 0.9727, null, 0.9444, 0.9402, null, 0.9427, 0.9714, null, null, null, null, null, null, 0.9666, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 12, "mean": 0.96, "latest": 0.9666, "lowest": 0.9347, "highest": 1.0}, {"name": "邹静", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [0.99, null, null, null, null, null, null, 0.991, 0.9629, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 3, "mean": 0.98, "latest": 0.9629, "lowest": 0.9629, "highest": 0.991}, {"name": "高婷婷", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [null, null, 0.9538, null, 0.9583, 0.9393, 0.9705, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.9487, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 5, "mean": 0.95, "latest": 0.9487, "lowest": 0.9393, "highest": 0.9705}, {"name": "张晓园", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [null, null, 0.9524, null, null, null, 0.9211, 0.9512, 0.971, null, 0.9222, 0.9542, null, 0.9266, 0.9818, null, null, null, null, null, null, 0.9583, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 9, "mean": 0.95, "latest": 0.9583, "lowest": 0.9211, "highest": 0.9818}, {"name": "高医", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.915, null, 0.9833, null, 0.9667, null, 0.9696, 0.9722, 0.9555, 0.9666, null, 0.9777, null, null, null, null, null, null, null, null, null], "valid_count": 8, "mean": 0.96, "latest": 0.9777, "lowest": 0.915, "highest": 0.9833}, {"name": "赵思衡", "queue": "整体+指令+一致性GSB", "direction": "I2I", "independent": "是", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.8515, null, 0.9677, 0.9444, 0.9583, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 4, "mean": 0.93, "latest": 0.9583, "lowest": 0.8515, "highest": 0.9677}, {"name": "仲安", "queue": "美感GSB", "direction": "I2I", "independent": "是", "scores": [0.82, 0.9357798165137615, 0.9069767441860465, 0.8416, 0.9777777777777777, 0.94, 0.7875, 0.9667, null, null, null, null, null, 0.67, 0.671, null, 0.808, 0.833, 0.815, 0.89, null, null, null, 0.811, 0.738, 0.78, 0.8290598290598291, null, 0.875, 0.911, null, null, null, null, null, null, null], "valid_count": 20, "mean": 0.84, "latest": 0.911, "lowest": 0.67, "highest": 0.9777777777777777}, {"name": "吴欣怡", "queue": "美感GSB", "direction": "I2I", "independent": "是", "scores": [0.75, 0.8868, 0.74, null, 0.7845, 0.9456, 0.9, 0.942, null, null, null, null, 0.767, 0.894, 0.894, null, 0.835, 0.895, 0.838, 0.869, 0.88, 0.874, null, null, null, 0.777, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 17, "mean": 0.85, "latest": 0.777, "lowest": 0.74, "highest": 0.9456}, {"name": "尚雪欣", "queue": "美感GSB", "direction": "I2I", "independent": "是", "scores": [0.5, 0.8261, 0.768, null, 0.7945, 0.9384, 0.92, 0.923, null, 0.8085, null, null, 0.8992, null, null, null, null, null, 0.803, 0.899, 0.924, null, null, 0.793, 0.877, null, 0.8951781970649895, 0.885, null, null, null, null, null, null, null, null, null], "valid_count": 16, "mean": 0.84, "latest": 0.885, "lowest": 0.5, "highest": 0.9384}, {"name": "张铭铄", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, 0.896551724137931, 0.745, null, 0.784, 0.9093, 0.863, null, null, 0.826, null, null, null, 0.742, 0.774, null, 0.758, null, 0.843, 0.877, 0.847, null, null, 0.809, 0.815, 0.715, 0.857397504456328, null, null, 0.938, null, 0.8092, null, 0.9246, null, null, null], "valid_count": 19, "mean": 0.83, "latest": 0.9246, "lowest": 0.715, "highest": 0.938}, {"name": "朱拎蓓", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, 0.94, 0.7606, null, null, null, 0.714, 0.831, null, 0.709, null, null, null, null, null, null, null, 0.785, 0.78, null, 0.772, null, 0.893, 0.8594, 0.7806, null, 0.8275, 0.8202, 0.892, null], "valid_count": 14, "mean": 0.81, "latest": 0.892, "lowest": 0.709, "highest": 0.94}, {"name": "何玉敏", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.556, 0.776, null, 0.902, null, 0.88, 0.8, 0.902, 0.84, null, null, 0.9444444444444444, 0.96, 0.8343, 0.8892, null, null, 0.97, 0.9494, null], "valid_count": 13, "mean": 0.86, "latest": 0.9494, "lowest": 0.556, "highest": 0.97}, {"name": "刘明", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, null, null, null, 0.85, 0.94, 0.902, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.8601, 0.85, 77.7, 0.8814229249011858, null, 0.9278499278499278, 0.903, 0.8814, 0.8715, null, 0.9325, 0.93, 0.9607, null], "valid_count": 14, "mean": 6.39, "latest": 0.9607, "lowest": 0.85, "highest": 77.7}, {"name": "马俊娇", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.834, 0.799, 0.788, 0.787, null, null, 0.9124579124579124, 0.96, 0.8927, 0.8722, null, 0.9385, 0.9423, 0.9438, null], "valid_count": 11, "mean": 0.88, "latest": 0.9438, "lowest": 0.787, "highest": 0.96}, {"name": "颜钰涵", "queue": "美感GSB", "direction": "I2I", "independent": "需要观察", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.8196248196248196, 0.893, 0.8342, 0.7267, null, null, null, 0.8409, null], "valid_count": 5, "mean": 0.82, "latest": 0.8409, "lowest": 0.7267, "highest": 0.893}, {"name": "聂晶晶", "queue": "美感GSB", "direction": "I2I", "independent": "否", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, 0.7179, 0.713, 0.825, null, 0.711, null, 0.785, 0.817, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 6, "mean": 0.76, "latest": 0.817, "lowest": 0.711, "highest": 0.825}, {"name": "黄春梅", "queue": "美感GSB", "direction": "I2I", "independent": "否", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.676, 0.703, 0.7903, 0.877, null, 0.735, 0.595, null, null, null, null, 0.742, null, null, null, null, null, null, null, null], "valid_count": 7, "mean": 0.73, "latest": 0.742, "lowest": 0.595, "highest": 0.877}, {"name": "唐昕泽", "queue": "美感GSB", "direction": "I2I", "independent": "否", "scores": [null, null, null, null, null, null, null, 0.8338, 0.909, null, null, null, null, 0.578, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 3, "mean": 0.77, "latest": 0.578, "lowest": 0.578, "highest": 0.909}, {"name": "李思玟", "queue": "美感GSB", "direction": "I2I", "independent": "否", "scores": [null, null, null, null, null, null, null, null, 0.732, null, null, 0.8461538461538461, 0.6153846153846154, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 3, "mean": 0.73, "latest": 0.6153846153846154, "lowest": 0.6153846153846154, "highest": 0.8461538461538461}, {"name": "高世谛", "queue": "结构GSB", "direction": "I2I", "independent": "是", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 0, "mean": null, "latest": null, "lowest": null, "highest": null}, {"name": "马双晶", "queue": "结构GSB", "direction": "I2I", "independent": "是", "scores": [null, 0.9833, 0.96, 0.946, 0.96, 0.9506, 0.9, 0.9506, 0.97, 0.9506, 0.946, 0.958, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null], "valid_count": 11, "mean": 0.95, "latest": 0.958, "lowest": 0.9, "highest": 0.9833}, {"name": "王冬云杉", "queue": "结构GSB", "direction": "I2I", "independent": "是", "scores": [null, null, null, 0.92, 0.92, 0.94, 0.89, 0.95, 0.958, 0.92, 0.94, 0.88, null, 0.9834, 0.9758, null, null, null, null, 0.9775, 0.9872, 0.9375, 0.927, 0.9538, 0.958075, 0.945, 0.9524, 0.99009, null, null, null, null, null, null, null, null, null], "valid_count": 20, "mean": 0.95, "latest": 0.99009, "lowest": 0.88, "highest": 0.99009}, {"name": "侯丽妍", "queue": "指令+一致性考点", "direction": "I2I", "independent": "是", "scores": [0.9857, 0.99, 0.99, null, 0.98, 0.97, 0.98, 0.98, 0.98, null, 0.9777, 0.9807, 0.9782, 0.9838, 0.9886, 0.9756, 0.9897, 0.9729, 0.9761, 0.9636, 0.9697, 0.9636363636363636, null, 0.96, 0.956, 1.0, null, 1.0, 0.9729, 0.9629, null, null, null, null, 0.9375, null, null], "valid_count": 27, "mean": 0.98, "latest": 0.9375, "lowest": 0.9375, "highest": 1.0}, {"name": "赵悦童", "queue": "指令+一致性考点", "direction": "I2I", "independent": "是", "scores": [0.9714, null, 0.97, null, null, 0.965, null, null, 0.99, null, null, null, null, null, null, null, 0.9795, 0.9687, 0.975, 0.9583, 0.9761, 0.9666666666666667, 0.9375, 0.9583, 0.9574, 0.9473, null, 0.9615, 0.9677, null, null, null, null, null, 0.9642, null, null], "valid_count": 17, "mean": 0.97, "latest": 0.9642, "lowest": 0.9375, "highest": 0.99}, {"name": "赵晨", "queue": "指令+一致性考点", "direction": "I2I", "independent": "是", "scores": [null, 0.959, 0.975, null, 0.975, 0.97, 0.99, 0.98, null, null, null, null, null, null, null, 0.9736, 0.9722, 0.9473, 0.9729, 0.9629, 0.9736, 0.974025974025974, null, 0.9583, 1.0, 0.9705, null, 0.9411, 97.56, 0.96, null, null, null, null, 1.0, null, null], "valid_count": 20, "mean": 5.8, "latest": 1.0, "lowest": 0.9411, "highest": 97.56}, {"name": "赵婷", "queue": "指令+一致性考点", "direction": "I2I", "independent": "是", "scores": [null, 0.99, 0.98, null, 0.97, 0.965, 0.98, 0.99, null, null, 0.9821, 0.9795, 0.9791, 0.9843, 0.9733, null, 0.9743, 0.95, 0.9772, 0.9565, 0.9523, 0.9591, null, 1.0, 0.957, 0.9459, null, 0.9411, 0.9666, 0.9545, null, null, null, null, 0.95, null, null], "valid_count": 24, "mean": 0.97, "latest": 0.95, "lowest": 0.9411, "highest": 1.0}, {"name": "王晓霞", "queue": "指令+一致性考点", "direction": "I2I", "independent": "是", "scores": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, 0.9821, 0.9791, 0.9629, 0.96, 0.9607, 0.9655172413793104, 0.9666, 0.9444, 0.951, 0.9696, null, 0.9722, 0.95, 1.0, null, null, null, null, 1.0, null, null], "valid_count": 14, "mean": 0.97, "latest": 1.0, "lowest": 0.9444, "highest": 1.0}], "overallMean": 1.47, "riskCount": 36, "dateRangeText": "2026-05-20 至 2026-07-01", "firstDate": "2026-05-20", "lastDate": "2026-07-01", "dateCount": 37, "totalPeople": 39, "queues": ["指令+一致性考点", "指令遵循", "指令遵循GSB", "整体", "整体+指令+一致性GSB", "整体GSB", "结构", "结构GSB", "美感", "美感GSB", "考点"], "directions": ["I2I", "T2I"], "generatedTime": "2026-07-06 18:19:35"};
+
+    // ---- Init header + metrics ----
+    document.getElementById('date-range').textContent = DATA.dateRangeText;
+    document.getElementById('date-count').textContent = DATA.dateCount;
+    document.getElementById('total-people').textContent = DATA.totalPeople;
+    document.getElementById('gen-time').textContent = DATA.generatedTime;
+    document.getElementById('m-date-count').textContent = DATA.dateCount;
+    document.getElementById('m-total').textContent = DATA.totalPeople;
+    document.getElementById('m-mean').textContent = DATA.overallMean.toFixed(2) + '%';
+    document.getElementById('m-risk').textContent = DATA.riskCount;
+
+    const queueSelect = document.getElementById('queue-filter');
+    DATA.queues.forEach(q => {
+      const opt = document.createElement('option');
+      opt.value = q; opt.textContent = q;
+      queueSelect.appendChild(opt);
+    });
+    const dirSelect = document.getElementById('direction-filter');
+    DATA.directions.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d; opt.textContent = d;
+      dirSelect.appendChild(opt);
+    });
+
+    const state = {
+      keyword: '',
+      queue: '',
+      direction: '',
+      sort: 'risk-asc',
+      view: 'all',
+      pageSize: 24,
+      page: 1,
+      rangeDays: 7,
+    };
+
+    const chartInstances = new Map();
+
+    function getRange() {
+      const total = DATA.shortDates.length;
+      let n = (state.rangeDays === 'all') ? total : Math.min(parseInt(state.rangeDays, 10), total);
+      const start = Math.max(0, total - n);
+      return { start, end: total, count: n };
+    }
+
+    function statsForPerson(p) {
+      const { start, end } = getRange();
+      const scoresSlice = p.scores.slice(start, end);
+      const valid = scoresSlice.filter(v => v !== null && v !== undefined);
+      const mean = valid.length ? +(valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(2) : null;
+      let latest = null;
+      for (let i = scoresSlice.length - 1; i >= 0; i--) {
+        if (scoresSlice[i] !== null && scoresSlice[i] !== undefined) { latest = scoresSlice[i]; break; }
+      }
+      const lowest = valid.length ? Math.min.apply(null, valid) : null;
+      const highest = valid.length ? Math.max.apply(null, valid) : null;
+      return { scoresSlice, valid, mean, latest, lowest, highest, validCount: valid.length };
+    }
+
+    function isRiskMean(mean) {
+      return mean !== null && mean !== undefined && mean < 90;
+    }
+
+    function isRisk(p, statsMap) {
+      const s = statsMap ? statsMap.get(p) : null;
+      const m = s ? s.mean : p.mean;
+      return isRiskMean(m);
+    }
+
+    function filterAndSort(statsMap) {
+      const kw = state.keyword.trim().toLowerCase();
+      let list = DATA.people.filter(p => {
+        if (state.view === 'risk' && !isRisk(p, statsMap)) return false;
+        if (kw && !p.name.toLowerCase().includes(kw)) return false;
+        if (state.queue && p.queue !== state.queue) return false;
+        if (state.direction && p.direction !== state.direction) return false;
+        return true;
+      });
+      const meanOf = (p) => {
+        const s = statsMap.get(p);
+        return s ? s.mean : null;
+      };
+      const meanOr = (p, fallback) => {
+        const m = meanOf(p);
+        return (m === null || m === undefined) ? fallback : m;
+      };
+      switch (state.sort) {
+        case 'risk-asc':
+          list.sort((a,b) => {
+            const ra = isRisk(a, statsMap) ? 0 : 1;
+            const rb = isRisk(b, statsMap) ? 0 : 1;
+            if (ra !== rb) return ra - rb;
+            return meanOr(a, 999) - meanOr(b, 999);
+          });
+          break;
+        case 'mean-asc':
+          list.sort((a,b) => meanOr(a, 999) - meanOr(b, 999));
+          break;
+        case 'mean-desc':
+          list.sort((a,b) => meanOr(b, -1) - meanOr(a, -1));
+          break;
+        case 'name':
+          list.sort((a,b) => a.name.localeCompare(b.name, 'zh-CN'));
+          break;
+      }
+      return list;
+    }
+
+    function fmtPct(v) {
+      if (v === null || v === undefined) return '-';
+      return v.toFixed(2) + '%';
+    }
+
+    function buildChart(el, person, stats) {
+      const risk = isRiskMean(stats.mean);
+      const color = risk ? '#F54A45' : '#34B352';
+      const areaColor = risk ? 'rgba(245, 74, 69, 0.18)' : 'rgba(52, 179, 82, 0.18)';
+      const areaColorEnd = risk ? 'rgba(245, 74, 69, 0.02)' : 'rgba(52, 179, 82, 0.02)';
+
+      const { start, end } = getRange();
+      const shortDatesSlice = DATA.shortDates.slice(start, end);
+      const headersSlice = DATA.dateHeaders.slice(start, end);
+      const dataPoints = stats.scoresSlice.map(v => (v === null || v === undefined) ? null : v);
+
+      const option = {
+        grid: { left: 4, right: 4, top: 12, bottom: 36, containLabel: true },
+        tooltip: {
+          trigger: 'axis',
+          confine: true,
+          textStyle: { fontSize: 12 },
+          formatter: (params) => {
+            if (!params || !params.length) return '';
+            const p = params[0];
+            const raw = p.data;
+            const val = (raw === null || raw === undefined) ? '-' : (raw.toFixed(2) + '%');
+            return `${headersSlice[p.dataIndex]}<br/>准确率：<b>${val}</b>`;
+          }
+        },
+        xAxis: {
+          type: 'category',
+          data: shortDatesSlice,
+          boundaryGap: false,
+          axisLine: { lineStyle: { color: '#E5E6EB' } },
+          axisTick: { show: false },
+          axisLabel: {
+            color: '#86909C',
+            fontSize: 9,
+            interval: 0,
+            rotate: 45,
+            margin: 8,
+          }
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          max: 100,
+          show: false,
+        },
+        series: [{
+          type: 'line',
+          data: dataPoints,
+          connectNulls: true,
+          smooth: false,
+          showSymbol: true,
+          symbolSize: 4,
+          lineStyle: { color, width: 2 },
+          itemStyle: { color },
+          areaStyle: {
+            color: {
+              type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: areaColor },
+                { offset: 1, color: areaColorEnd },
+              ]
+            }
+          },
+          markLine: {
+            symbol: 'none',
+            silent: true,
+            label: { show: false },
+            lineStyle: { color: '#F54A45', type: 'dashed', width: 1 },
+            data: [{ yAxis: 90 }]
+          }
+        }]
+      };
+      const chart = echarts.init(el, null, { renderer: 'canvas' });
+      chart.setOption(option);
+      return chart;
+    }
+
+    function renderCard(person, stats) {
+      const risk = isRiskMean(stats.mean);
+      const el = document.createElement('div');
+      el.className = 'person-card' + (risk ? ' risk' : '');
+
+      const indClass = person.independent === '是' ? 'independent-yes' : (person.independent === '否' ? 'independent-no' : '');
+
+      const parts = [];
+      parts.push(`
+        <div class="person-header">
+          <div class="person-name">${escapeHtml(person.name)}</div>
+          ${risk ? '<span class="risk-badge">△ 风险</span>' : ''}
+        </div>
+        <div class="person-meta">
+          ${person.queue ? `<span class="tag">${escapeHtml(person.queue)}</span>` : ''}
+          ${person.direction ? `<span class="tag">${escapeHtml(person.direction)}</span>` : ''}
+          ${person.independent ? `<span class="tag ${indClass}">独立质检：${escapeHtml(person.independent)}</span>` : ''}
+          <span style="color:#86909C;">${stats.validCount} 个数据点</span>
+        </div>
+        <div class="chart-box"></div>
+        <div class="stat-row">
+          <div class="stat-cell"><span class="k">均值</span><span class="v ${risk ? 'risk' : ''}">${fmtPct(stats.mean)}</span></div>
+          <div class="stat-cell"><span class="k">最新</span><span class="v">${fmtPct(stats.latest)}</span></div>
+          <div class="stat-cell"><span class="k">最低</span><span class="v">${fmtPct(stats.lowest)}</span></div>
+          <div class="stat-cell"><span class="k">最高</span><span class="v">${fmtPct(stats.highest)}</span></div>
+        </div>
+        ${risk ? `<div class="warn-line">△ 均值 ${stats.mean.toFixed(2)}% &lt; 90%</div>` : ''}
+      `);
+      el.innerHTML = parts.join('');
+      return el;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function updateTopMetrics(statsMap) {
+      const { count } = getRange();
+      const means = [];
+      let riskCnt = 0;
+      DATA.people.forEach(p => {
+        const s = statsMap.get(p);
+        if (s && s.mean !== null && s.mean !== undefined) {
+          means.push(s.mean);
+          if (s.mean < 90) riskCnt++;
+        }
+      });
+      const overall = means.length ? +(means.reduce((a,b)=>a+b,0)/means.length).toFixed(2) : 0;
+      document.getElementById('m-date-count').textContent = count;
+      document.getElementById('m-mean').textContent = overall.toFixed(2) + '%';
+      document.getElementById('m-risk').textContent = riskCnt;
+    }
+
+    function firstRowCount(grid) {
+      const children = grid.children;
+      if (!children.length) return 0;
+      const top0 = children[0].offsetTop;
+      let n = 0;
+      for (let i = 0; i < children.length; i++) {
+        if (children[i].offsetTop === top0) n++; else break;
+      }
+      return n;
+    }
+
+    // Adapt chart height so the top area + first card row fit within the
+    // visible viewport at 100% browser zoom, without needing to scroll.
+    function autoFitCharts() {
+      const grid = document.getElementById('grid');
+      if (!grid.children.length) return;
+      const cols = firstRowCount(grid) || 1;
+      const firstRow = Array.from(grid.children).slice(0, cols);
+      const chartBox0 = firstRow[0].querySelector('.chart-box');
+      if (!chartBox0) return;
+      const curChartH = chartBox0.getBoundingClientRect().height || 150;
+      // Height a card needs besides its chart (name/meta/stats/warn-line/padding).
+      // Measured per card so risk cards (with warn-line) are accounted for.
+      let maxOverhead = 0;
+      firstRow.forEach(card => {
+        const h = card.getBoundingClientRect().height;
+        maxOverhead = Math.max(maxOverhead, h - curChartH);
+      });
+      // Distance from the top of the grid to the bottom of the viewport.
+      const gridTop = grid.getBoundingClientRect().top; // page is at scroll-top on load
+      const avail = window.innerHeight - gridTop - 28; // breathing room so bottom numbers aren't at the edge
+      let target = Math.floor(avail - maxOverhead);
+      target = Math.max(64, Math.min(180, target));
+      const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chart-h')) || 150;
+      if (Math.abs(target - cur) >= 2) {
+        document.documentElement.style.setProperty('--chart-h', target + 'px');
+      }
+      chartInstances.forEach(c => c.resize());
+    }
+
+    function render() {
+      // Dispose all charts
+      chartInstances.forEach(c => c.dispose());
+      chartInstances.clear();
+
+      const statsMap = new Map();
+      DATA.people.forEach(p => statsMap.set(p, statsForPerson(p)));
+      updateTopMetrics(statsMap);
+
+      const list = filterAndSort(statsMap);
+      const totalPages = Math.max(1, Math.ceil(list.length / state.pageSize));
+      if (state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * state.pageSize;
+      const end = start + state.pageSize;
+      const pageList = list.slice(start, end);
+
+      const grid = document.getElementById('grid');
+      grid.innerHTML = '';
+      const empty = document.getElementById('empty');
+      if (list.length === 0) {
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+      }
+
+      pageList.forEach(p => {
+        const s = statsMap.get(p);
+        const card = renderCard(p, s);
+        grid.appendChild(card);
+        const chartBox = card.querySelector('.chart-box');
+        const chart = buildChart(chartBox, p, s);
+        chartInstances.set(p.name, chart);
+      });
+
+      const pageInfo = `${state.page} / ${totalPages}（共 ${list.length} 人）`;
+      document.getElementById('page-info').textContent = pageInfo;
+      document.getElementById('page-info2').textContent = pageInfo;
+      const disablePrev = state.page <= 1;
+      const disableNext = state.page >= totalPages;
+      document.getElementById('prev-btn').disabled = disablePrev;
+      document.getElementById('prev-btn2').disabled = disablePrev;
+      document.getElementById('next-btn').disabled = disableNext;
+      document.getElementById('next-btn2').disabled = disableNext;
+
+      // Fit the first card row into the viewport after layout settles.
+      requestAnimationFrame(autoFitCharts);
+    }
+
+    // ---- Bind events ----
+    document.getElementById('search').addEventListener('input', (e) => {
+      state.keyword = e.target.value;
+      state.page = 1;
+      render();
+    });
+    document.getElementById('queue-filter').addEventListener('change', (e) => {
+      state.queue = e.target.value;
+      state.page = 1;
+      render();
+    });
+    document.getElementById('direction-filter').addEventListener('change', (e) => {
+      state.direction = e.target.value;
+      state.page = 1;
+      render();
+    });
+    document.getElementById('sort-select').addEventListener('change', (e) => {
+      state.sort = e.target.value;
+      render();
+    });
+    document.getElementById('page-size').addEventListener('change', (e) => {
+      state.pageSize = parseInt(e.target.value, 10);
+      state.page = 1;
+      render();
+    });
+    document.getElementById('range-select').addEventListener('change', (e) => {
+      const v = e.target.value;
+      state.rangeDays = (v === 'all') ? 'all' : parseInt(v, 10);
+      state.page = 1;
+      render();
+    });
+    document.querySelectorAll('#view-switch button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#view-switch button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.view = btn.dataset.view;
+        state.page = 1;
+        render();
+      });
+    });
+    ['prev-btn', 'prev-btn2'].forEach(id => {
+      document.getElementById(id).addEventListener('click', () => {
+        if (state.page > 1) { state.page--; render(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+      });
+    });
+    ['next-btn', 'next-btn2'].forEach(id => {
+      document.getElementById(id).addEventListener('click', () => {
+        state.page++;
+        render();
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      });
+    });
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      chartInstances.forEach(c => c.resize());
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(autoFitCharts, 150);
+    });
+
+    render();
+  </script>
+</body>
+</html>
